@@ -287,7 +287,8 @@ local newNamespace = function(namespaceName, templates)
         end
 
         -- Makes classes from registered templates
-        local makeClass = function(temp)
+        local makeClass
+        makeClass = function(temp)
             -- Define constructors
             local priConstructor = function(this, ...) end
             local proConstructor = function(this, ...) end
