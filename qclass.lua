@@ -132,6 +132,9 @@ local newNamespace = function(namespaceName, templates)
     if namespaces[namespaceName] then
         error("A namespace by the name "..namespaceName.." already exists")
     end
+    if type(templates) ~= "table" then
+        error(errors.badTab("templates"))
+    end
 
     local pubClasses = {} -- Contains only public classes, only used by namespace accessor
 
