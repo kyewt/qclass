@@ -101,6 +101,6 @@ local classB = {
 }
 
 table.freeze(classB)
--- If unfrozen, the class may be modified by other scripts, do what you want.
+-- If unfrozen, the class template may be modified by other scripts pre-registration, do what you want.
 
 return classB
