@@ -1,8 +1,6 @@
-local count = 0
-
-local classB = {
-    name = "classB",
-    inherits = "test.classA",
+local classC = {
+    name = "classC",
+    inherits = "test.classB",
     properties = {
         public = {
             {"name", function(this)
@@ -12,4 +10,4 @@ local classB = {
     }
 }
 
-return classB
+return classC
