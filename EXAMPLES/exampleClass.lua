@@ -18,14 +18,16 @@ local classB = {
         },
         properties = {
             private = {
+                -- Getter and setter
                 {   "priStaPropertyA",
                     function(class) return class.priStaFieldA end,
                     function(class, value) class.priStaFieldA = value end
                 },
+                -- Only getter
                 {   "priStaPropertyB",
                     function(class) return class.priStaFieldA end,
-                    nil
                 },
+                -- Only setter
                 {   "priStaPropertyC",
                     nil,
                     function(class, value) class.priStaFieldA = value end
@@ -44,14 +46,14 @@ local classB = {
     },
     fields = {
         private = {
-            { "priFieldA", "private string", "readonly"},
-            { "priFieldB", nil, "readonly"}
+            { "priFieldA", "private string"},
+            { "priFieldB", nil}
         },
         protected = { 
             { "proFieldA", "protected string" }
         },
         public = {
-            { "pubFieldA", "public string" }
+            { "pubFieldA", "public string", "readonly" }
         }
     },
     properties = {
@@ -64,6 +66,9 @@ local classB = {
                 function(this) return this.priFieldA end,
                 function(this, value) this.priFieldA = value end,
             },
+            -- Non-static properties may have a fourth value, the initializer
+            -- Initializers are setters only accessible during construction
+            -- Initializers may set readonly fields
             {
                 "priPropertyC",
                 function(this) return this.priFieldA end,
@@ -82,14 +87,6 @@ local classB = {
         public = {}
     },
     constructors = {
-        private = function(this, ...)
-            local myArgs = {...}
-            local initValue = myArgs[1]
-            this.priPropertyC = initValue
-            this.priMethodA()
-            this.priFieldA = { "hi ", "nice ", "to ", "meet ", "you."}
-        end,
-        protected = nil,
         public = function(this, ...)
             local myArgs = {...}
             local myStr = myArgs[1]
@@ -97,10 +94,6 @@ local classB = {
         end,
     },
     __tostring = function(this) return this.priFieldA end,
-    __iter = function(this, table) end,
 }
-
-table.freeze(classB)
--- If unfrozen, the class template may be modified by other scripts pre-registration, do what you want.
 
 return classB

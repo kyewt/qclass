@@ -1,5 +1,26 @@
--- Config for requiring modules
-local IS_ROBLOX = false
+--[[
+MIT License
+
+Copyright (c) 2024 kyewt
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
 
 -- Frequently used error messages
 local errors = {
@@ -12,149 +33,154 @@ local errors = {
     badInsGet = function(key, className) return tostring(key).." is not a readable member of instance of "..className end,
     badInsSet = function(key, className) return tostring(key).." is not a writable member of instance of "..className end,
     badBaseClass = function(class) return tostring(class).." does not have a base class" end,
-    badBaseAccess = function(baseClass) return tostring(baseClass).." is not an accessible member of base class "..tostring(baseClass) end
+    badBaseAccess = function(baseClass) return tostring(baseClass).." is not an accessible member of base class "..tostring(baseClass) end,
+    badInstantiate = function(fullClassName) return "Cannot instantiate abstract class "..fullClassName end
 }
 
 -- Declare and define variables used in class creation
 local nilProxy = {} -- A value to be treated as nil while still holding table space
-local makeFieldGetter
-local makeFieldSetter
-local makePropertyGetter
-local makePropertySetter
-local makeMethodGetter
-local addFieldDefaultValues
-local addFields
-local addStaticFields
-local addProperties
-local addMethods
-do -- Makers
-    if not IS_ROBLOX then
-        makeFieldGetter = require "./makeFieldGetter.lua"
-        makeFieldSetter = require "./makeFieldSetter.lua"
-        makePropertyGetter = require "./makePropertyGetter.lua"
-        makePropertySetter = require "./makePropertySetter.lua"
-        makeMethodGetter = require "./makeMethodGetter.lua"
-    else
-        makeFieldGetter = require(script.Parent:WaitForChild("makeFieldGetter"))
-        makeFieldSetter = require(script.Parent:WaitForChild("makeFieldSetter"))
-        makePropertyGetter = require(script.Parent:WaitForChild("makePropertyGetter"))
-        makePropertySetter = require(script.Parent:WaitForChild("makePropertySetter"))
-        makeMethodGetter = require(script.Parent:WaitForChild("makeMethodGetter"))
+-- Makers
+local makeFieldGetter = function(valueTab)
+    return function()
+        local value = valueTab[1]
+        if value == nilProxy then
+            value = nil
+        end
+        return value
     end
-    makeFieldGetter.init(nilProxy); makeFieldGetter = makeFieldGetter.makeFieldGetter
-    makeFieldSetter.init(nilProxy); makeFieldSetter = makeFieldSetter.makeFieldSetter
-    makePropertyGetter.init(nilProxy); makePropertyGetter = makePropertyGetter.makePropertyGetter
-    makePropertySetter.init(nilProxy); makePropertySetter = makePropertySetter.makePropertySetter
 end
-do -- Adders
-    addFieldDefaultValues = function(fTemps, values, readonlyValueTabs)
-        for _, fTemp in ipairs(fTemps) do
-            local name = fTemp[1]
-            local value = fTemp[2]
-            local readonly = fTemp[3]
-            if value == nil then
-                value = nilProxy
-            end
-            if readonly then
-                values[name] = nil
-                readonlyValueTabs[name] = value
-            else
-                readonlyValueTabs[name] = nil
-                values[name] = value
-            end
+local makeFieldSetter = function(valueTab)
+    return function(_, value)
+        if value == nil then
+            value = nilProxy
         end
+        valueTab[1] = value
     end
-    addFields = function(defValues, valueTabs, getters, setters)
-        for name, defValue in pairs(defValues) do
-            local valueTab = { defValue }
-            valueTabs[name] = valueTab
-            getters[name] = makeFieldGetter(valueTab)
-            setters[name] = makeFieldSetter(valueTab)
+end
+local makePropertyGetter = function(getterFunc)
+    return function(this)
+        local value = getterFunc(this)
+        if value == nilProxy then
+            return nil
         end
+        return value
     end
-    addStaticFields = function(fTemps, valueTabs, getters, setters, initers)
-        for _, fTemp in ipairs(fTemps) do
-            local name = fTemp[1]
-            local value = fTemp[2]
-            local readonly = fTemp[3]
-            if value == nil then
-                value = nilProxy
-            end
-            local valueTab = { value }
-            valueTabs[name] = valueTab
-            getters[name] = makeFieldGetter(valueTab)
-            if not readonly then
-                setters[name] = makeFieldSetter(valueTab)
-            elseif initers then
-                initers[name] = makeFieldSetter(valueTab)
-            end
+end
+local makePropertySetter = function(setterFunc)
+    return function(this, value)
+        if value == nil then
+            value = nilProxy
         end
+        setterFunc(this, value)
     end
-    addProperties = function(pTemps, getters, setters, initers)
-        for _, pTemp in ipairs(pTemps) do
-            local name = pTemp[1]
-            local getter = pTemp[2]
-            local setter = pTemp[3]
-            if getter then
-                getters[name] = makePropertyGetter(getter)
-            else
-                getters[name] = nil
-            end
-            if setter then
-                setters[name] = makePropertySetter(setter)
-            else
-                setters[name] = nil
-            end
-            if initers then
-                local initer = pTemp[4]
-                if initer then
-                    initers[name] = makePropertySetter(initer)
-                else
-                    initers[name] = nil
-                end
-            end
-        end
-    end
-    addMethods = function(mTemps, getters)
-        for _, mTemp in ipairs(mTemps) do
-            local name = mTemp[1]
-            local func = mTemp[2]
-            getters[name] = makeMethodGetter(func)
+end
+local makeMethodGetter = function(methodFunc)
+    return function(this)
+        return function(...)
+            return methodFunc(this, ...)
         end
     end
 end
 
+-- Adders
+local addFieldDefaultValues = function(fTemps, values, readonlyValueTabs)
+    for _, fTemp in ipairs(fTemps) do
+        local name = fTemp[1]
+        local value = fTemp[2]
+        local readonly = fTemp[3]
+        if value == nil then
+            value = nilProxy
+        end
+        if readonly then
+            values[name] = nil
+            readonlyValueTabs[name] = value
+        else
+            readonlyValueTabs[name] = nil
+            values[name] = value
+        end
+    end
+end
+local addFields = function(defValues, valueTabs, getters, setters)
+    for name, defValue in pairs(defValues) do
+        local valueTab = { defValue }
+        valueTabs[name] = valueTab
+        getters[name] = makeFieldGetter(valueTab)
+        setters[name] = makeFieldSetter(valueTab)
+    end
+end
+local addStaticFields = function(fTemps, valueTabs, getters, setters, initers)
+    for _, fTemp in ipairs(fTemps) do
+        local name = fTemp[1]
+        local value = fTemp[2]
+        local readonly = fTemp[3]
+        if value == nil then
+            value = nilProxy
+        end
+        local valueTab = { value }
+        valueTabs[name] = valueTab
+        getters[name] = makeFieldGetter(valueTab)
+        if not readonly then
+            setters[name] = makeFieldSetter(valueTab)
+        elseif initers then
+            initers[name] = makeFieldSetter(valueTab)
+        end
+    end
+end
+local addProperties = function(pTemps, getters, setters, initers)
+    for _, pTemp in ipairs(pTemps) do
+        local name = pTemp[1]
+        local getter = pTemp[2]
+        local setter = pTemp[3]
+        if getter then
+            getters[name] = makePropertyGetter(getter)
+        else
+            getters[name] = nil
+        end
+        if setter then
+            setters[name] = makePropertySetter(setter)
+        else
+            setters[name] = nil
+        end
+        if initers then
+            local initer = pTemp[4]
+            if initer then
+                initers[name] = makePropertySetter(initer)
+            else
+                initers[name] = nil
+            end
+        end
+    end
+end
+local addMethods = function(mTemps, getters)
+    for _, mTemp in ipairs(mTemps) do
+        local name = mTemp[1]
+        local func = mTemp[2]
+        getters[name] = makeMethodGetter(func)
+    end
+end
+
+-- Variables accessed internally only
 local namespaces = {} -- string : namespace dictionary
 local allClasses = {} -- class array
 local allClassInheriteds = {} -- class : inheritedClass dictionary
-local allClassDatas = {} -- class : classData dictionary
-local allClassPubConstructors = {} -- class : function dictionary
+local allClassDatas    = {} -- class : classData dictionary
+local allPriClassDatas = {} -- class : priClassData dictionary
+local allClassConstructors = {} -- class : function dictionary
+
 
 -- Creates classes, used during namespace creation
 local makeClass -- Self-referencing function
 makeClass = function(temp, namespaceName, pubClasses, intClasses, intClassTemplates)
-    -- Declare default constructors
-    local priConstructor = function(this, ...) end
-    local proConstructor = function(this, ...) end
-    local pubConstructor = function(this, ...) end
-    do
-        local constructors = temp.constructors
-        if constructors then
-            local private = constructors.private
-            if private then priConstructor = private end
-            local protected = constructors.protected
-            if protected then proConstructor = protected end
-            local public = constructors.public
-            if public then pubConstructor = public end
-        end
-    end
+    -- Declare default constructor
+    local constructor = temp.constructor or function(this, ...) end
     -- Initialize non-inherited private class-space class data
-    local priStaValues   = {}
-    local priStaGetters  = {}
-    local priStaSetters  = {}
-    local priClaGetters  = {}
-    local priClaSetters  = {}
-    local priClaIniters  = {}
+    local priClassData   = {}
+    local priStaValues   = {}; priClassData.priStaValues  = priStaValues
+    local priStaGetters  = {}; priClassData.priStaGetters = priStaGetters
+    local priStaSetters  = {}; priClassData.priStaSetters = priStaSetters
+    local priClaGetters  = {}; priClassData.priClaGetters = priClaGetters
+    local priClaSetters  = {}; priClassData.priClaSetters = priClaSetters
+    local priClaIniters  = {}; priClassData.priClaIniters = priClaIniters
     -- Initialize inherited non-private class-space data and private instance-space data
     local classData      = {}
     local proStaValues   = {}; classData.proStaValues   = proStaValues
@@ -183,16 +209,13 @@ makeClass = function(temp, namespaceName, pubClasses, intClasses, intClassTempla
         if inherits then
             local inheritedClass
             local split = temp.inherits:split(".")
-            do -- add temp.inherits length checking to validation
+            do
                 local inheritedNamespaceName = split[1]
                 local inheritedClassName = split[2]
                 if inheritedNamespaceName == namespaceName then
                     inheritedClass = intClasses[inheritedClassName]
                     if not inheritedClass then
                         local inheritedTemplate = intClassTemplates[inheritedClassName]
-                        if not inheritedTemplate then
-                            error("fix this in validation")
-                        end
                         inheritedClass = makeClass(inheritedTemplate, namespaceName, pubClasses, intClasses, intClassTemplates)
                     end
                 end
@@ -392,79 +415,31 @@ makeClass = function(temp, namespaceName, pubClasses, intClasses, intClassTempla
         __class = staticProxy,
         __type  = fullClassName
     }
-    -- Define __call for public constructor only
-    pubStaticMT.__call = function(_, ...)
-        -- Initialize permanent instance data
-        local priValues  = {}
-        local proValues  = {}
-        local pubValues  = {}
-        local priGetters = {}
-        local proGetters = {}
-        local pubGetters = {}
-        local priSetters = {}
-        local proSetters = {}
-        local pubSetters = {}
-        -- Populate permanent instance data
-        addFields(priDefValues, priValues, priGetters, priSetters)
-        addFields(proDefValues, proValues, proGetters, proSetters)
-        addFields(pubDefValues, pubValues, pubGetters, pubSetters)
-        for name, defValue in pairs(pubDefValuesR) do
-            local value = { defValue }
-            pubValues[name] = value
-            pubGetters[name] = makeFieldGetter(value)
+    -- Setup construction if not an abstract class
+    
+    if temp.abstract then 
+        pubStaticMT.__call = function()
+            error(errors.badInstantiate(fullClassName))
         end
-        -- Declare incomplete instance metatable objects
-        local instanceProxy = {}
-        local claInstanceMT = {
-            __index = function(_, k)
-                local getter = priGetters[k] or proGetters[k] or pubGetters[k] or
-                    priClaGetters[k] or proClaGetters[k] or pubClaGetters[k] or
-                    priStaGetters[k] or proStaGetters[k] or pubStaGetters[k]
-                if not getter then
-                    error(errors.badInsGet(k, fullClassName))
-                end
-                return getter(instanceProxy)
-            end,
-            __newindex = function(_, k, v)
-                local setter = priSetters[k] or proSetters[k] or pubSetters[k] or
-                    priClaSetters[k] or proClaSetters[k] or pubClaSetters[k]
-                if not setter then
-                    error(errors.badInsSet(k, fullClassName))
-                end
-                setter(instanceProxy, v)
-            end
-        }
-        local pubInstanceMT
-        pubInstanceMT = {
-            __index = function(_, k)
-                local getter = pubGetters[k] or pubClaGetters[k] or pubStaGetters[k]
-                if not getter then
-                    error(errors.badInsGet(k, fullClassName))
-                end
-                setmetatable(instanceProxy, claInstanceMT)
-                local value = getter(instanceProxy)
-                setmetatable(instanceProxy, pubInstanceMT)
-                return value
-            end,
-            __newindex = function(_, k, v)
-                local setter = pubSetters[k] or pubClaSetters[k] or pubStaSetters[k]
-                if not setter then
-                    error(errors.badInsSet(k, fullClassName))
-                end
-                setmetatable(instanceProxy, claInstanceMT)
-                setter(instanceProxy, v)
-                setmetatable(instanceProxy, pubInstanceMT)
-            end
-        }
-        -- Declare temporary instance data
-        -- Setup instance proxy for construction
-        -- Complete instance metatable objects
-        do
-            local priIniters = {}
-            local proIniters = {}
-            addFields(priDefValuesR, priValues, priGetters, priIniters)
-            addFields(proDefValuesR, proValues, proGetters, proIniters)
-            local conInstanceMT = {
+    else
+        local makeInstance = function(constructor, ...)
+            -- Initialize permanent instance data
+            local priValues  = {}
+            local proValues  = {}
+            local pubValues  = {}
+            local priGetters = {}
+            local proGetters = {}
+            local pubGetters = {}
+            local priSetters = {}
+            local proSetters = {}
+            local pubSetters = {}
+            -- Populate permanent instance data
+            addFields(priDefValues, priValues, priGetters, priSetters)
+            addFields(proDefValues, proValues, proGetters, proSetters)
+            addFields(pubDefValues, pubValues, pubGetters, pubSetters)
+            -- Declare incomplete instance metatable objects
+            local instanceProxy = {}
+            local claInstanceMT = {
                 __index = function(_, k)
                     local getter = priGetters[k] or proGetters[k] or pubGetters[k] or
                         priClaGetters[k] or proClaGetters[k] or pubClaGetters[k] or
@@ -475,40 +450,100 @@ makeClass = function(temp, namespaceName, pubClasses, intClasses, intClassTempla
                     return getter(instanceProxy)
                 end,
                 __newindex = function(_, k, v)
-                    local setter = priIniters[k] or proIniters[k] or
-                        priClaIniters[k] or proClaIniters[k] or pubClaIniters[k] or
-                        priSetters[k] or proSetters[k] or pubSetters[k]
+                    local setter = priSetters[k] or proSetters[k] or pubSetters[k] or
+                        priClaSetters[k] or proClaSetters[k] or pubClaSetters[k]
                     if not setter then
                         error(errors.badInsSet(k, fullClassName))
                     end
                     setter(instanceProxy, v)
                 end
             }
-            for metaName, metaOverride in pairs(commonInstanceMTM) do
-                conInstanceMT[metaName] = metaOverride
-                claInstanceMT[metaName] = metaOverride
-                pubInstanceMT[metaName] = function(...)
+            local pubInstanceMT
+            pubInstanceMT = {
+                __index = function(_, k)
+                    local getter = pubGetters[k] or pubClaGetters[k] or pubStaGetters[k]
+                    if not getter then
+                        error(errors.badInsGet(k, fullClassName))
+                    end
                     setmetatable(instanceProxy, claInstanceMT)
-                    local value = metaOverride(...)
+                    local value = getter(instanceProxy)
                     setmetatable(instanceProxy, pubInstanceMT)
                     return value
+                end,
+                __newindex = function(_, k, v)
+                    local setter = pubSetters[k] or pubClaSetters[k] or pubStaSetters[k]
+                    if not setter then
+                        error(errors.badInsSet(k, fullClassName))
+                    end
+                    setmetatable(instanceProxy, claInstanceMT)
+                    setter(instanceProxy, v)
+                    setmetatable(instanceProxy, pubInstanceMT)
                 end
+            }
+            -- Declare temporary instance data (initers, constructor metatable)
+            -- Setup instance proxy for construction
+            -- Complete instance metatable objects
+            do
+                local priIniters = {}
+                local proIniters = {}
+                local pubIniters = {}
+                addFields(priDefValuesR, priValues, priGetters, priIniters)
+                addFields(proDefValuesR, proValues, proGetters, proIniters)
+                addFields(pubDefValuesR, pubValues, pubGetters, pubIniters)
+                local conInstanceMT = {
+                    __index = function(_, k)
+                        local getter = priGetters[k] or proGetters[k] or pubGetters[k] or
+                            priClaGetters[k] or proClaGetters[k] or pubClaGetters[k] or
+                            priStaGetters[k] or proStaGetters[k] or pubStaGetters[k]
+                        if not getter then
+                            error(errors.badInsGet(k, fullClassName))
+                        end
+                        return getter(instanceProxy)
+                    end,
+                    __newindex = function(_, k, v)
+                        local setter = priIniters[k] or proIniters[k] or pubIniters[k] or
+                            priClaIniters[k] or proClaIniters[k] or pubClaIniters[k] or
+                            priSetters[k] or proSetters[k] or pubSetters[k]
+                        if not setter then
+                            error(errors.badInsSet(k, fullClassName))
+                        end
+                        setter(instanceProxy, v)
+                    end
+                }
+                for metaName, metaOverride in pairs(commonInstanceMTM) do
+                    conInstanceMT[metaName] = metaOverride
+                    claInstanceMT[metaName] = metaOverride
+                    pubInstanceMT[metaName] = function(...)
+                        setmetatable(instanceProxy, claInstanceMT)
+                        local value = metaOverride(...)
+                        setmetatable(instanceProxy, pubInstanceMT)
+                        return value
+                    end
+                end
+                for metaName, metaData in pairs(commonInstanceMTD) do
+                    conInstanceMT[metaName] = metaData
+                    claInstanceMT[metaName] = metaData
+                    pubInstanceMT[metaName] = metaData 
+                end
+                setmetatable(instanceProxy, conInstanceMT)
             end
-            for metaName, metaData in pairs(commonInstanceMTD) do
-                conInstanceMT[metaName] = metaData
-                claInstanceMT[metaName] = metaData
-                pubInstanceMT[metaName] = metaData 
-            end
-            setmetatable(instanceProxy, conInstanceMT)
+            -- Run constructor function and return instance to user
+            constructor(instanceProxy, ...)
+            setmetatable(instanceProxy, pubInstanceMT)
+            return instanceProxy
         end
-        -- Run constructor function and return instance to user
-        pubConstructor(instanceProxy, ...)
-        setmetatable(instanceProxy, pubInstanceMT)
-        return instanceProxy
+         -- Define __call using public constructor only
+        claStaticMT.__call = function(_, ...)
+            return makeInstance(constructor, ...)
+        end
+        pubStaticMT.__call = function(_, ...)
+            return makeInstance(constructor, ...)
+        end
     end
     table.insert(allClasses, staticProxy)
     allClassDatas[staticProxy] = classData
-    allClassPubConstructors[staticProxy] = pubConstructor
+    allPriClassDatas[staticProxy] = priClassData
+    allClassConstructors[staticProxy] = constructor
     if temp.internal then
         intClasses[className] = staticProxy
     else
@@ -545,7 +580,7 @@ local newNamespace = function(namespaceName, templates)
     })
     namespaces[namespaceName] = namespace
 
-    do -- Populate namespace
+    do -- Validate and populate namespace
         local intClasses = {} -- Contains public and internal classes, used in makeClass
         local intClassTemplates = {} -- Used during template registration and class creation
 
@@ -666,8 +701,42 @@ local newNamespace = function(namespaceName, templates)
                     error("Class template with the name "..name.." already exists")
                 end
                 local inherits = tab.inherits
-                if inherits ~= nil and type(inherits) ~= "string" then
-                    error("Bad type to inherits, expected string")
+                if inherits then
+                    if type(inherits) ~= "string" then
+                        error("Bad type to inherits, expected string")
+                    end
+                    local split = inherits:split(".")
+                    if #split ~= 2 then
+                        error("Bad inherits format, expected namespace.className")
+                    end
+                    local inhNamespaceName = split[1]
+                    local inhClassName = split[2]
+                    local inhNamespace = namespaces[inhNamespaceName]
+                    if not inhNamespace then
+                        error("Namespace of inherited class "..inherits.." does not exist")
+                    end
+                    if inhNamespace ~= namespace then
+                        local succ, _ = pcall(function()
+                            return inhNamespace[inhClassName]
+                        end)
+                        if not succ then
+                            error("Class by the name "..inherits.." does not exist")
+                        end
+                    else
+                        local foundTemp = false
+                        for _, template in pairs(templates) do
+                            if template ~= tab then
+                                local name = template.name
+                                if name == inhClassName then
+                                    foundTemp = true
+                                    break
+                                end
+                            end
+                        end
+                        if not foundTemp then
+                            error("Other template by the name "..inhClassName.." does not exist in validating namespace "..namespaceName)
+                        end
+                    end
                 end
                 validateMembers(tab.statics, "statics")
                 validateMembers(tab, name)
@@ -705,15 +774,20 @@ local newNamespace = function(namespaceName, templates)
 end
 
 do -- Make internal namespace and object class
-    local count = 0
     local baseAccessors = setmetatable({}, {__mode = "v"}) -- Weak table for storing base accessors
     local objectClass = {
         name = "object",
+        abstract = true,
         properties = {
+            public = {
+                {"className", function(this)
+                    local CLASS = getmetatable(this).__class
+                    return tostring(CLASS)
+                end}
+            },
             protected = {
                 {"base", -- Accesses class space instance members of the base class (NOT THREAD SAFE)
                 function(this)
-                    count = count + 1
                     local baseAccessor = baseAccessors[this]
                     if baseAccessor then return baseAccessor end
                     local CLASS = getmetatable(this).__class
@@ -742,10 +816,8 @@ do -- Make internal namespace and object class
                         baseClass = classHierarchy[layer]
                         baseClassData = allClassDatas[baseClass]
                     end
-                    local count2 = 0
                     baseAccessor = setmetatable({}, {
                         __index = function(_, k)
-                            count2 = count2 + 1
                             incrementClass()
                             local getter = baseClassData.proClaGetters[k] or
                                 baseClassData.pubClaGetters[k]
@@ -768,7 +840,7 @@ do -- Make internal namespace and object class
                         end,
                         __call = function(...)
                             incrementClass()
-                            allClassPubConstructors[baseClass](this, ...)
+                            allClassConstructors[baseClass](this, ...)
                             decrementClass()
                         end
                     })
@@ -780,6 +852,13 @@ do -- Make internal namespace and object class
         },
         methods = {
             public = {
+                {"is", function(this, typeStr)
+                    local CLASS = getmetatable(this).__class
+                    if tostring(CLASS) == typeStr then
+                        return true
+                    end
+                    return false
+                end},
                 {"isA", function(this, typeStr) -- Checks type inheritance
                     local CLASS = getmetatable(this).__class
                     local baseClass = allClassInheriteds[CLASS]
