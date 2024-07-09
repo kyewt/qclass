@@ -1,7 +1,6 @@
 local classB = {
-    name =  "classB",
+    name =  "classA",
     static = false,
-    inherits = "classA",
     implements = { "interfaceA", "interfaceB" },
     statics = {
         fields = {

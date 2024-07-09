@@ -1,13 +1,12 @@
 local qclass = require "../qclass.lua"
 
-local classModules = {
-    "exampleClass.lua"
+local classTemplates = {
+    require "exampleClass.lua"
 }
 
-for _, classModule in ipairs(classModules) do
-    qclass.new(require(classModule))
-end
+local namespace = qclass.newNamespace("example", classTemplates)
 
-local classB = qclass.classes.classB
-print(classB.pubStaFieldA)
-local instB1 = classB("example1")
+local classA = namespace.classA
+print(classA.pubStaFieldA)
+local instA1 = classA("example1")
+print(instA1.pubStaFieldA)

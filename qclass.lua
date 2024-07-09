@@ -24,9 +24,9 @@ SOFTWARE.
 
 -- Frequently used error messages
 local errors = {
-    badTab = function(name) return "Bad type to" ..name..", expected table" end,
-    badStr = function(name) return "Bad type to" ..name..", expected string" end,
-    badFun = function(name) return "Bad type to" ..name..", expected function" end,
+    badTab = function(name) return "Bad type to " ..name..", expected table" end,
+    badStr = function(name) return "Bad type to " ..name..", expected string" end,
+    badFun = function(name) return "Bad type to " ..name..", expected function" end,
     badSet = function(name) return "Cannot set index of "..name end,
     badStaGet = function(key, className) return tostring(key).." is not a readable static member of "..className end,
     badStaSet = function(key, className) return tostring(key).." is not a writable static member of "..className end,
@@ -108,7 +108,7 @@ local addFields = function(defValues, valueTabs, getters, setters)
         setters[name] = makeFieldSetter(valueTab)
     end
 end
-local addStaticFields = function(fTemps, valueTabs, getters, setters, initers)
+local addStaticFields = function(fTemps, valueTabs, getters, setters)
     for _, fTemp in ipairs(fTemps) do
         local name = fTemp[1]
         local value = fTemp[2]
@@ -121,8 +121,6 @@ local addStaticFields = function(fTemps, valueTabs, getters, setters, initers)
         getters[name] = makeFieldGetter(valueTab)
         if not readonly then
             setters[name] = makeFieldSetter(valueTab)
-        elseif initers then
-            initers[name] = makeFieldSetter(valueTab)
         end
     end
 end
@@ -377,6 +375,7 @@ makeClass = function(temp, namespaceName, pubClasses, intClasses, intClassTempla
                 setmetatable(staticProxy, claStaticMT)
                 local value = getter(staticProxy)
                 setmetatable(staticProxy, pubStaticMT)
+                return value
             end,
             __newindex = function(_, k, v)
                 local setter = pubStaSetters[k]
